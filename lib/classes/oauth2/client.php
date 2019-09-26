@@ -294,6 +294,7 @@ class client extends \oauth2_client {
      */
     public function get_userinfo() {
         $url = $this->get_issuer()->get_endpoint_url('userinfo');
+        $isLinkedIn = stripos($url,'linkedin');
         $response = $this->get($url);
         if (!$response) {
             return false;
@@ -301,6 +302,13 @@ class client extends \oauth2_client {
         $userinfo = new stdClass();
         try {
             $userinfo = json_decode($response);
+            if($isLinkedIn){
+                $tmp = new stdClass();
+                $tmp->username = $userinfo->elements[0]->{"handle~"}->emailAddress;
+                $tmp->email = $userinfo->elements[0]->{"handle~"}->emailAddress;
+                $userinfo = $tmp;
+            }
+
         } catch (\Exception $e) {
             return false;
         }
@@ -308,25 +316,29 @@ class client extends \oauth2_client {
         $map = $this->get_userinfo_mapping();
 
         $user = new stdClass();
-        foreach ($map as $openidproperty => $moodleproperty) {
-            // We support nested objects via a-b-c syntax.
-            $getfunc = function($obj, $prop) use (&$getfunc) {
-                $proplist = explode('-', $prop, 2);
-                if (empty($proplist[0]) || empty($obj->{$proplist[0]})) {
-                    return false;
-                }
-                $obj = $obj->{$proplist[0]};
+        if(!$isLinkedIn) {
+            foreach ($map as $openidproperty => $moodleproperty) {
+                // We support nested objects via a-b-c syntax.
+                $getfunc = function ($obj, $prop) use (&$getfunc) {
+                    $proplist = explode('-', $prop, 2);
+                    if (empty($proplist[0]) || empty($obj->{$proplist[0]})) {
+                        return false;
+                    }
+                    $obj = $obj->{$proplist[0]};
 
-                if (count($proplist) > 1) {
-                    return $getfunc($obj, $proplist[1]);
-                }
-                return $obj;
-            };
+                    if (count($proplist) > 1) {
+                        return $getfunc($obj, $proplist[1]);
+                    }
+                    return $obj;
+                };
 
-            $resolved = $getfunc($userinfo, $openidproperty);
-            if (!empty($resolved)) {
-                $user->$moodleproperty = $resolved;
+                $resolved = $getfunc($userinfo, $openidproperty);
+                if (!empty($resolved)) {
+                    $user->$moodleproperty = $resolved;
+                }
             }
+        }else{
+            $user = $userinfo;
         }
 
         if (empty($user->username) && !empty($user->email)) {
